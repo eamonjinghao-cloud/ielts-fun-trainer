@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Question } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { speakFeedback } from '@/lib/audio';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -72,6 +73,9 @@ export default function ReadingQuestion({
     setSubmitted(true);
     const isCorrect = selected === question.correctAnswer;
     if (isCorrect) setCelebrate(true);
+    
+    speakFeedback(isCorrect, lang);
+    
     // Move to next after 1.5s
     timerRef.current = setTimeout(() => {
       timerRef.current = null;

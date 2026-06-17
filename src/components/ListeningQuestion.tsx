@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Question } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { speakFeedback } from '@/lib/audio';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -69,6 +70,9 @@ export default function ListeningQuestion({
     setSubmitted(true);
     const isCorrect = answer.trim().toLowerCase() === question.correctAnswer.toLowerCase();
     if (isCorrect) setCelebrate(true);
+    
+    speakFeedback(isCorrect, lang);
+    
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       onAnswer(answer.trim().toLowerCase());

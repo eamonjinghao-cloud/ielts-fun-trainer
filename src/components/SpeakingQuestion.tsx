@@ -21,6 +21,7 @@ export default function SpeakingQuestion({
   const [secondsLeft, setSecondsLeft] = useState(question.durationSeconds);
   const [checklist, setChecklist] = useState<boolean[]>(new Array(question.checklist.length).fill(false));
   const [finished, setFinished] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
@@ -92,8 +93,14 @@ export default function SpeakingQuestion({
       setRecording(false);
       speechDurationRef.current += (Date.now() - speechStartTimeRef.current) / 1000;
     };
-    recognition.onerror = () => {
+    recognition.onerror = (event: any) => {
       setRecording(false);
+      const errMsg = event?.error === 'not-allowed'
+        ? (lang === 'zh' ? '🎤 麦克风权限未授权，请在浏览器设置中允许麦克风访问' : '🎤 Microphone permission denied. Allow mic access in browser settings.')
+        : event?.error === 'no-speech'
+        ? (lang === 'zh' ? '🎤 未检测到语音，请再试一次' : '🎤 No speech detected, try again.')
+        : (lang === 'zh' ? '🎤 录音出错，请重试或使用 Checklist 练习' : '🎤 Recording error. Use checklist instead.');
+      setMicError(errMsg);
     };
 
     try {
@@ -199,6 +206,12 @@ export default function SpeakingQuestion({
           {lang === 'zh'
             ? '⚠️ 你的浏览器不支持语音识别，请手动勾选已完成的要点'
             : '⚠️ Your browser does not support speech recognition. Please check off points manually.'}
+        </div>
+      )}
+
+      {micError && (
+        <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-700 text-center">
+          {micError}
         </div>
       )}
 

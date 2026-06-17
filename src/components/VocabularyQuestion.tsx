@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import type { VocabularyQuestion } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { speakFeedback } from '@/lib/audio';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -73,6 +74,9 @@ export default function VocabularyQuestion({
     setSubmitted(true);
     const isCorrect = selected.toLowerCase().trim() === question.correctAnswer.toLowerCase().trim();
     if (isCorrect) setCelebrate(true);
+    
+    speakFeedback(isCorrect, lang);
+    
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
       onAnswer(selected);
