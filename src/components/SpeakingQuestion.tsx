@@ -93,6 +93,7 @@ export default function SpeakingQuestion({
       setRecording(false);
       speechDurationRef.current += (Date.now() - speechStartTimeRef.current) / 1000;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     recognition.onerror = (event: any) => {
       setRecording(false);
       const errMsg = event?.error === 'not-allowed'
