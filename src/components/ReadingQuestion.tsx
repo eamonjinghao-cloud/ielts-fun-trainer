@@ -20,7 +20,15 @@ export default function ReadingQuestion({
   const [selected, setSelected] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [celebrate, setCelebrate] = useState(false);
+  const [shuffledOptions, setShuffledOptions] = useState<string[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Shuffle options on mount
+  useEffect(() => {
+    if (question.options) {
+      setShuffledOptions([...question.options].sort(() => Math.random() - 0.5));
+    }
+  }, [question.id, question.options]);
 
   // Reset state when question changes
   useEffect(() => {
@@ -42,8 +50,8 @@ export default function ReadingQuestion({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!question.options) return;
       const idx = parseInt(e.key) - 1;
-      if (idx >= 0 && idx < question.options.length) {
-        handleSelect(question.options[idx]);
+      if (idx >= 0 && idx < shuffledOptions.length) {
+        handleSelect(shuffledOptions[idx]);
         e.preventDefault();
       } else if (e.key === 'Enter' && selected) {
         handleSubmit();
@@ -52,7 +60,7 @@ export default function ReadingQuestion({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [submitted, selected, question.options]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [submitted, selected, shuffledOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelect = (opt: string) => {
     if (submitted) return;
@@ -108,7 +116,7 @@ export default function ReadingQuestion({
 
       {/* Options */}
       <div className="space-y-3">
-        {question.options?.map((opt) => {
+        {shuffledOptions.map((opt) => {
           const letter = opt[0];
           const isChecked = selected === letter;
           return (
@@ -137,6 +145,22 @@ export default function ReadingQuestion({
           );
         })}
       </div>
+
+      {/* Feedback message */}
+      {submitted && (
+        <div className={cn(
+          'rounded-xl border p-4 text-sm font-medium text-center',
+          celebrate ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+        )}>
+          {celebrate
+            ? (lang === 'zh'
+              ? (['🎯 慧眼识珠！', '✅ 阅读理解满分！', '👏 逻辑清晰！', '🌟 一眼看穿！', '💪 阅读达人！'][Math.floor(Math.random() * 5)])
+              : (['🎯 Sharp eye!', '✅ That\'s it!', '👏 Great reading!', '🌟 Well reasoned!', '💪 Nailed it!'][Math.floor(Math.random() * 5)]))
+            : (lang === 'zh'
+              ? (['🤔 再仔细看看原文？', '💡 没关系，读一读解析！', '📝 细节藏在文章里！', '🔍 回到原文找线索！', '🌱 多读几遍就有感觉！'][Math.floor(Math.random() * 5)])
+              : (['🤔 Check the passage again!', '💡 Read the explanation!', '📝 Details are in the text!', '🔍 Look for clues!', '🌱 Practice makes perfect!'][Math.floor(Math.random() * 5)]))}
+        </div>
+      )}
 
       {/* Explanation after submit */}
       {submitted && (

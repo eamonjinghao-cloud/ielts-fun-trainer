@@ -148,6 +148,22 @@ export default function VocabularyQuestion({
         })}
       </div>
 
+      {/* Feedback message */}
+      {submitted && (
+        <div className={cn(
+          'rounded-xl border p-4 text-sm font-medium text-center',
+          celebrate ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+        )}>
+          {celebrate
+            ? (lang === 'zh'
+              ? (['🎯 词汇量 +1！', '✅ 记牢了！', '👏 这个单词拿捏！', '🌟 学霸就是你！', '💪 单词王！'][Math.floor(Math.random() * 5)])
+              : (['🎯 Vocab +1!', '✅ Well remembered!', '👏 Word master!', '🌟 Nailed the word!', '💪 Vocabulary king!'][Math.floor(Math.random() * 5)]))
+            : (lang === 'zh'
+              ? (['🤔 这个词有点难，记住它！', '💡 没关系，背单词就是这样！', '📝 写下来加深记忆！', '🔍 下次一定能认出来！', '🌱 每个词都要见几次才能记住！'][Math.floor(Math.random() * 5)])
+              : (['🤔 Tricky word, remember it!', '💡 No worries, review it!', '📝 Write it down!', '🔍 You will recognize it next time!', '🌱 Every word needs practice!'][Math.floor(Math.random() * 5)]))}
+        </div>
+      )}
+
       {/* Correct answer reveal */}
       {submitted && !celebrate && (
         <div className="rounded-xl bg-blue-50 border border-blue-200 p-4 text-sm text-blue-800">

@@ -13,12 +13,26 @@ import AchievementToast from '@/components/AchievementToast';
 
 type Phase = 'intro' | 'practice' | 'feedback' | 'submitting';
 
+/** 反馈类型：本地规则 or AI 增强 */
+interface FeedbackResult {
+  overall: string;
+  strengths: string[];
+  improvements: string[];
+  tips: string[];
+  estimatedBand: number;
+  vocabularyScore?: number;
+  grammarScore?: number;
+  coherenceScore?: number;
+  taskAchievementScore?: number;
+  isAIFeedback?: boolean;
+}
+
 interface WritingResult {
   question: WritingQuestionType;
   draft: string;
   wordCount: number;
   timeUsed: number;
-  feedback: ReturnType<typeof analyzeWritingFeedback>;
+  feedback: FeedbackResult;
 }
 
 export default function WritingPracticePage() {
@@ -29,6 +43,7 @@ export default function WritingPracticePage() {
   const [newAchievements, setNewAchievements] = useState<Achievement[]>([]);
   const [sessionStartTime] = useState(Date.now());
   const [result, setResult] = useState<WritingResult | null>(null);
+  const [aiAnalyzing, setAiAnalyzing] = useState(false);
 
   useEffect(() => {
     const settings = getSettings();
@@ -38,17 +53,47 @@ export default function WritingPracticePage() {
     setCurrentQ(randomQ);
   }, []);
 
-  const handleQuestionDone = useCallback((wordCount: number, draft: string, timeUsed: number) => {
+  const handleQuestionDone = useCallback(async (wordCount: number, draft: string, timeUsed: number) => {
     if (!currentQ) return;
-    const feedback = analyzeWritingFeedback(currentQ, draft, timeUsed);
+    // 先做本地规则分析（即时展示）
+    const localFeedback = analyzeWritingFeedback(currentQ, draft, timeUsed);
     setResult({
       question: currentQ,
       draft,
       wordCount,
       timeUsed,
-      feedback,
+      feedback: localFeedback,
     });
     setPhase('feedback');
+
+    // 异步调 AI 做深度分析（不阻塞页面展示）
+    setAiAnalyzing(true);
+    try {
+      const res = await fetch('/api/writing-feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: currentQ.prompt,
+          essay: draft,
+          wordCount,
+          type: currentQ.type,
+          timeUsed,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.source === 'agnes-ai') {
+          setResult(prev => prev ? {
+            ...prev,
+            feedback: { ...data.feedback, isAIFeedback: true },
+          } : prev);
+        }
+      }
+    } catch {
+      // AI 不可用，保留本地规则分析结果
+    } finally {
+      setAiAnalyzing(false);
+    }
   }, [currentQ]);
 
   const handleFinish = useCallback(() => {
@@ -164,7 +209,17 @@ export default function WritingPracticePage() {
               <span className="text-sm text-[var(--muted-foreground)]">
                 {lang === 'zh' ? '预估 Band Score' : 'Estimated Band Score'}
               </span>
-              <span className="text-3xl font-extrabold text-[var(--primary)]">{result.feedback.estimatedBand.toFixed(1)}</span>
+              <div className="flex items-center gap-2">
+                {result.feedback.isAIFeedback ? (
+                  <span className="text-xs font-medium text-violet-500 bg-violet-50 px-2 py-0.5 rounded-full">AI</span>
+                ) : (
+                  <span className="text-xs font-medium text-amber-500 bg-amber-50 px-2 py-0.5 rounded-full">{lang === 'zh' ? '规则分析' : 'Rule-based'}</span>
+                )}
+                {aiAnalyzing && (
+                  <span className="text-xs text-violet-500 animate-pulse">{lang === 'zh' ? 'AI 分析中...' : 'AI analyzing...'}</span>
+                )}
+                <span className="text-3xl font-extrabold text-[var(--primary)]">{result.feedback.estimatedBand.toFixed(1)}</span>
+              </div>
             </div>
             <div className="text-sm text-[var(--foreground)] bg-gray-50 rounded-lg p-3">
               {result.feedback.overall}

@@ -119,32 +119,85 @@ export default function ListeningQuestion({
         {question.questionText}
       </div>
 
-      {/* Answer input */}
-      <div className="space-y-2">
-        <input
-          type="text"
-          value={answer}
-          onChange={e => setAnswer(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && !submitted && handleSubmit()}
-          disabled={submitted}
-          placeholder={lang === 'zh' ? '输入你的答案...' : 'Type your answer...'}
-          aria-label={lang === 'zh' ? '输入答案' : 'Enter your answer'}
-          className={cn(
-            'w-full rounded-xl border-2 px-4 py-3 text-base outline-none transition-all duration-200',
-            submitted
-              ? isCorrect
-                ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-                : 'border-red-400 bg-red-50 text-red-700'
-              : 'border-[var(--border)] focus:border-[var(--primary)] bg-white'
+      {/* Multiple-choice options */}
+      {question.options && question.options.length > 0 ? (
+        <>
+          <div className="space-y-2">
+            {question.options.map((opt) => {
+              const letter = opt[0];
+              const isSelected = answer === letter;
+              const isCorrectOpt = question.correctAnswer === letter;
+              let style = 'border-[var(--border)] hover:border-violet-300 hover:bg-violet-50 cursor-pointer';
+              if (submitted) {
+                if (isCorrectOpt) style = 'border-emerald-500 bg-emerald-50 text-emerald-700';
+                else if (isSelected) style = 'border-red-400 bg-red-50 text-red-700';
+                else style = 'border-[var(--border)] opacity-50';
+              } else if (isSelected) {
+                style = 'border-[var(--primary)] bg-violet-50 text-[var(--primary)]';
+              }
+              return (
+                <button
+                  key={opt}
+                  type="button"
+                  onClick={() => { if (!submitted) setAnswer(letter); }}
+                  disabled={submitted}
+                  className={`w-full text-left rounded-xl border-2 px-4 py-3 text-sm transition-all duration-200 ${style} ${submitted ? 'cursor-default' : ''}`}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+          {submitted && !isCorrect && (
+            <p className="text-sm text-emerald-600">
+              ✅ {lang === 'zh' ? '正确答案：' : 'Correct answer: '}
+              <span className="font-bold">{question.options.find(o => o[0] === question.correctAnswer)}</span>
+            </p>
           )}
-        />
-        {submitted && !isCorrect && (
-          <p className="text-sm text-emerald-600">
-            ✅ {lang === 'zh' ? '正确答案：' : 'Correct answer: '}
-            <span className="font-bold">{question.correctAnswer}</span>
-          </p>
-        )}
-      </div>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <input
+            type="text"
+            value={answer}
+            onChange={e => setAnswer(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && !submitted && handleSubmit()}
+            disabled={submitted}
+            placeholder={lang === 'zh' ? '输入你的答案...' : 'Type your answer...'}
+            aria-label={lang === 'zh' ? '输入答案' : 'Enter your answer'}
+            className={cn(
+              'w-full rounded-xl border-2 px-4 py-3 text-base outline-none transition-all duration-200',
+              submitted
+                ? isCorrect
+                  ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
+                  : 'border-red-400 bg-red-50 text-red-700'
+                : 'border-[var(--border)] focus:border-[var(--primary)] bg-white'
+            )}
+          />
+          {submitted && !isCorrect && (
+            <p className="text-sm text-emerald-600">
+              ✅ {lang === 'zh' ? '正确答案：' : 'Correct answer: '}
+              <span className="font-bold">{question.correctAnswer}</span>
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* Feedback message */}
+      {submitted && (
+        <div className={cn(
+          'rounded-xl border p-4 text-sm font-medium text-center',
+          isCorrect ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-amber-50 border-amber-200 text-amber-700'
+        )}>
+          {isCorrect
+            ? (lang === 'zh'
+              ? (['🎯 精准命中！', '✅ 完全正确！', '👏 听力满分感！', '🌟 耳朵真灵！', '💪 一击即中！'][Math.floor(Math.random() * 5)])
+              : (['🎯 Bullseye!', '✅ Nailed it!', '👏 Sharp ears!', '🌟 Perfect listening!', '💪 Spot on!'][Math.floor(Math.random() * 5)]))
+            : (lang === 'zh'
+              ? (['🤔 再听一遍试试？', '💡 没关系，记住正确答案！', '📝 别灰心，下次一定对！', '🔍 注意关键词！', '🌱 错误是成长的一部分！'][Math.floor(Math.random() * 5)])
+              : (['🤔 Try listening again!', '💡 No worries, learn from it!', '📝 You will get it next time!', '🔍 Listen for keywords!', '🌱 Mistakes help you grow!'][Math.floor(Math.random() * 5)]))}
+        </div>
+      )}
 
       {/* Explanation after submit */}
       {submitted && (
