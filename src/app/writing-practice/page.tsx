@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { WRITING_QUESTIONS } from '@/lib/questions';
-import { ACHIEVEMENTS, type Achievement, type PracticeSession } from '@/lib/types';
+import { STORAGE_KEYS, ACHIEVEMENTS, type Achievement, type PracticeSession } from '@/lib/types';
 import { analyzeWritingFeedback, calculateSpeakingWritingEstimate, generateId } from '@/lib/utils';
-import { saveSession, getSettings, saveSettings } from '@/lib/storage';
+import { saveSession, getSettings, saveSettings, getQuestionProgress, pickQuestions, markQuestionsComplete, saveQuestionProgress } from '@/lib/storage';
 import WritingQuestion from '@/components/WritingQuestion';
 import type { WritingQuestion as WritingQuestionType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
@@ -48,9 +48,12 @@ export default function WritingPracticePage() {
   useEffect(() => {
     const settings = getSettings();
     setLang(settings.language);
-    // 每天只出一题，随机选1题
-    const randomQ = WRITING_QUESTIONS[Math.floor(Math.random() * WRITING_QUESTIONS.length)];
-    setCurrentQ(randomQ);
+    // 从没做过的题目里随机选1题
+    const progress = getQuestionProgress(STORAGE_KEYS.WRITING_PROGRESS);
+    const result = pickQuestions(WRITING_QUESTIONS, 1, progress);
+    if (result.questions.length > 0) {
+      setCurrentQ(result.questions[0]);
+    }
   }, []);
 
   const handleQuestionDone = useCallback(async (wordCount: number, draft: string, timeUsed: number) => {
@@ -137,6 +140,13 @@ export default function WritingPracticePage() {
     };
 
     saveSession(session);
+
+    // Track completed question
+    if (currentQ) {
+      const prog = getQuestionProgress(STORAGE_KEYS.WRITING_PROGRESS);
+      saveQuestionProgress(STORAGE_KEYS.WRITING_PROGRESS, markQuestionsComplete(WRITING_QUESTIONS, [currentQ.id], prog));
+    }
+
     setPhase('submitting');
 
     setTimeout(() => {

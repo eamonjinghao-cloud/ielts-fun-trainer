@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { SPEAKING_QUESTIONS } from '@/lib/questions';
-import { ACHIEVEMENTS, type Achievement, type PracticeSession } from '@/lib/types';
+import { STORAGE_KEYS, ACHIEVEMENTS, type Achievement, type PracticeSession } from '@/lib/types';
 import { generateId } from '@/lib/utils';
-import { saveSession, getSettings, saveSettings } from '@/lib/storage';
+import { saveSession, getSettings, saveSettings, getQuestionProgress, pickQuestions, markQuestionsComplete, saveQuestionProgress } from '@/lib/storage';
 import SpeakingQuestion from '@/components/SpeakingQuestion';
 import { Button } from '@/components/ui/button';
 import AchievementToast from '@/components/AchievementToast';
@@ -35,7 +35,9 @@ export default function SpeakingPracticePage() {
   useEffect(() => {
     const settings = getSettings();
     setLang(settings.language);
-    setQuestions(shuffle(SPEAKING_QUESTIONS));
+    const progress = getQuestionProgress(STORAGE_KEYS.SPEAKING_PROGRESS);
+    const result = pickQuestions(SPEAKING_QUESTIONS, SPEAKING_QUESTIONS.length, progress);
+    setQuestions(result.questions);
   }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -106,6 +108,11 @@ export default function SpeakingPracticePage() {
     };
 
     saveSession(session);
+
+    // Track completed questions
+    const qIds = questions.map(q => q.id);
+    const prog = getQuestionProgress(STORAGE_KEYS.SPEAKING_PROGRESS);
+    saveQuestionProgress(STORAGE_KEYS.SPEAKING_PROGRESS, markQuestionsComplete(SPEAKING_QUESTIONS, qIds, prog));
 
     setTimeout(() => {
       router.push(`/results?id=${session.id}`);

@@ -131,11 +131,20 @@ export const STORAGE_KEYS = {
   SESSIONS: 'ielts_sessions',
   SETTINGS: 'ielts_settings',
   VOCAB_PROGRESS: 'ielts_vocab_progress',
+  READING_PROGRESS: 'ielts_reading_progress',
+  LISTENING_PROGRESS: 'ielts_listening_progress',
+  SPEAKING_PROGRESS: 'ielts_speaking_progress',
+  WRITING_PROGRESS: 'ielts_writing_progress',
 } as const;
 
 export interface VocabProgress {
   completedIds: string[];
   stats: Record<string, { correct: number; wrong: number }>;
+  cycle: number;
+}
+
+export interface QuestionProgress {
+  completedIds: string[];
   cycle: number;
 }
 

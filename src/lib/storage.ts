@@ -1,4 +1,4 @@
-import type { PracticeSession, UserSettings, VocabProgress, VocabularyQuestion } from './types';
+import type { PracticeSession, UserSettings, VocabProgress, VocabularyQuestion, QuestionProgress } from './types';
 import { STORAGE_KEYS } from './types';
 
 export function getSessions(): PracticeSession[] {
@@ -104,4 +104,75 @@ function shuffleArray<T>(arr: T[]): T[] {
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;
+}
+
+// === 通用题目进度（阅读/听力/口语/写作） ===
+
+export function getQuestionProgress(storageKey: string): QuestionProgress {
+  if (typeof window === 'undefined') return { completedIds: [], cycle: 1 };
+  try {
+    const raw = localStorage.getItem(storageKey);
+    return raw ? JSON.parse(raw) : { completedIds: [], cycle: 1 };
+  } catch {
+    return { completedIds: [], cycle: 1 };
+  }
+}
+
+export function saveQuestionProgress(storageKey: string, data: QuestionProgress): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(storageKey, JSON.stringify(data));
+  } catch {
+    // localStorage full
+  }
+}
+
+/** 从题库中挑选未做过的题目，全部做完则重置进入下一轮 */
+export function pickQuestions<T extends { id: string }>(
+  allQuestions: T[],
+  count: number,
+  progress: QuestionProgress
+): { questions: T[]; newCompletedIds: string[] } {
+  const remaining = allQuestions.filter(q => !progress.completedIds.includes(q.id));
+
+  // 全部做过 → 重置，进入新轮次
+  if (remaining.length === 0) {
+    const newCompletedIds = allQuestions.slice(0, count).map(q => q.id);
+    return {
+      questions: shuffleArray(allQuestions).slice(0, count),
+      newCompletedIds,
+    };
+  }
+
+  // 剩余不够 → 取全部剩余
+  if (remaining.length < count) {
+    return {
+      questions: shuffleArray(remaining),
+      newCompletedIds: [...progress.completedIds, ...remaining.map(q => q.id)],
+    };
+  }
+
+  // 正常 → 随机选 count 道
+  const picked = shuffleArray(remaining).slice(0, count);
+  return {
+    questions: picked,
+    newCompletedIds: [...progress.completedIds, ...picked.map(q => q.id)],
+  };
+}
+
+/** 标记题目已完成，全部做完自动重置 cycle */
+export function markQuestionsComplete(
+  allQuestions: { id: string }[],
+  questionIds: string[],
+  progress: QuestionProgress
+): QuestionProgress {
+  const newIds = [...progress.completedIds];
+  for (const qid of questionIds) {
+    if (!newIds.includes(qid)) newIds.push(qid);
+  }
+  const cycle = progress.cycle;
+  if (newIds.length >= allQuestions.length) {
+    return { completedIds: [], cycle: cycle + 1 };
+  }
+  return { completedIds: newIds, cycle };
 }

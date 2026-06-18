@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { READING_QUESTIONS, LISTENING_QUESTIONS } from '@/lib/questions';
-import { ACHIEVEMENTS, type Achievement, type PracticeSession } from '@/lib/types';
+import { ACHIEVEMENTS, type Achievement, type PracticeSession, STORAGE_KEYS } from '@/lib/types';
 import { accuracyToBand, generateId, calculateSpeakingWritingEstimate } from '@/lib/utils';
-import { saveSession, getSettings, saveSettings } from '@/lib/storage';
+import { saveSession, getSettings, saveSettings, getQuestionProgress, pickQuestions, markQuestionsComplete, saveQuestionProgress } from '@/lib/storage';
 import TimerBar from '@/components/TimerBar';
 import ReadingQuestion from '@/components/ReadingQuestion';
 import ListeningQuestion from '@/components/ListeningQuestion';
@@ -30,10 +30,28 @@ export default function PracticePage() {
   const [paused, setPaused] = useState(false);
   const [newAchievements, setNewAchievements] = useState<Achievement[]>([]);
   const [sessionStartTime] = useState(Date.now());
+  const [readingQs, setReadingQs] = useState<typeof READING_QUESTIONS>([]);
+  const [listeningQs, setListeningQs] = useState<typeof LISTENING_QUESTIONS>([]);
+  const initialized = useRef(false);
 
   useEffect(() => {
     const s = getSettings();
     setLang(s.language);
+  }, []);
+
+  // Pick questions: skip completed ones, cycle back when all done
+  useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
+    const rProgress = getQuestionProgress(STORAGE_KEYS.READING_PROGRESS);
+    const lProgress = getQuestionProgress(STORAGE_KEYS.LISTENING_PROGRESS);
+
+    const rResult = pickQuestions(readingQs, 5, rProgress);
+    const lResult = pickQuestions(listeningQs, 5, lProgress);
+
+    setReadingQs(rResult.questions);
+    setListeningQs(lResult.questions);
   }, []);
 
   // Timers
@@ -74,10 +92,10 @@ export default function PracticePage() {
   };
 
   const handleReadingAnswer = (answer: string) => {
-    const q = READING_QUESTIONS[readingIdx];
+    const q = readingQs[readingIdx];
     recordTime(q.id);
     setAnswers(prev => ({ ...prev, [q.id]: answer }));
-    if (readingIdx < READING_QUESTIONS.length - 1) {
+    if (readingIdx < readingQs.length - 1) {
       setReadingIdx(readingIdx + 1);
     } else {
       handleFinishReading();
@@ -101,10 +119,10 @@ export default function PracticePage() {
   }, [phase]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleListeningAnswer = (answer: string) => {
-    const q = LISTENING_QUESTIONS[listeningIdx];
+    const q = listeningQs[listeningIdx];
     recordTime(q.id);
     setAnswers(prev => ({ ...prev, [q.id]: answer }));
-    if (listeningIdx < LISTENING_QUESTIONS.length - 1) {
+    if (listeningIdx < listeningQs.length - 1) {
       setListeningIdx(listeningIdx + 1);
     } else {
       handleFinishListening();
@@ -113,26 +131,26 @@ export default function PracticePage() {
 
   const finishSession = () => {
     // Calculate scores
-    const totalQ = READING_QUESTIONS.length + LISTENING_QUESTIONS.length;
+    const totalQ = readingQs.length + listeningQs.length;
     let correct = 0;
     const latestAnswers = { ...answers };
 
-    READING_QUESTIONS.forEach(q => {
+    readingQs.forEach(q => {
       if (latestAnswers[q.id]?.toLowerCase()?.trim() === q.correctAnswer.toLowerCase().trim()) correct++;
     });
-    LISTENING_QUESTIONS.forEach(q => {
+    listeningQs.forEach(q => {
       if (latestAnswers[q.id]?.toLowerCase()?.trim() === q.correctAnswer.toLowerCase().trim()) correct++;
     });
 
-    const readingCorrect = READING_QUESTIONS.filter(q =>
+    const readingCorrect = readingQs.filter(q =>
       latestAnswers[q.id]?.toLowerCase()?.trim() === q.correctAnswer.toLowerCase().trim()
     ).length;
-    const listeningCorrect = LISTENING_QUESTIONS.filter(q =>
+    const listeningCorrect = listeningQs.filter(q =>
       latestAnswers[q.id]?.toLowerCase()?.trim() === q.correctAnswer.toLowerCase().trim()
     ).length;
 
-    const readingAccuracy = (readingCorrect / READING_QUESTIONS.length) * 100;
-    const listeningAccuracy = (listeningCorrect / LISTENING_QUESTIONS.length) * 100;
+    const readingAccuracy = (readingCorrect / readingQs.length) * 100;
+    const listeningAccuracy = (listeningCorrect / listeningQs.length) * 100;
     const overallAccuracy = (correct / totalQ) * 100;
 
     const readingBand = accuracyToBand(readingAccuracy, 'reading');
@@ -182,8 +200,8 @@ export default function PracticePage() {
       id: generateId(),
       createdAt: Date.now(),
       type: 'combined',
-      readingQuestions: READING_QUESTIONS,
-      listeningQuestions: LISTENING_QUESTIONS,
+      readingQuestions: readingQs,
+      listeningQuestions: listeningQs,
       answers: latestAnswers,
       timeUsed,
       perQuestionTime,
@@ -199,6 +217,14 @@ export default function PracticePage() {
     };
 
     saveSession(session);
+
+    // Mark questions as done so they won't repeat until all used
+    const rIds = readingQs.map(q => q.id);
+    const lIds = listeningQs.map(q => q.id);
+    const rProg = getQuestionProgress(STORAGE_KEYS.READING_PROGRESS);
+    const lProg = getQuestionProgress(STORAGE_KEYS.LISTENING_PROGRESS);
+    saveQuestionProgress(STORAGE_KEYS.READING_PROGRESS, markQuestionsComplete(READING_QUESTIONS, rIds, rProg));
+    saveQuestionProgress(STORAGE_KEYS.LISTENING_PROGRESS, markQuestionsComplete(LISTENING_QUESTIONS, lIds, lProg));
 
     // Navigate to results
     setTimeout(() => {
@@ -266,7 +292,7 @@ export default function PracticePage() {
             seconds={readingSeconds}
             totalSeconds={READING_TIME}
             current={readingIdx + 1}
-            total={READING_QUESTIONS.length}
+            total={readingQs.length}
             label={lang === 'zh' ? '阅读题' : 'Reading'}
           />
           <div className="max-w-3xl mx-auto px-4 py-8">
@@ -285,10 +311,10 @@ export default function PracticePage() {
               </div>
             ) : (
               <ReadingQuestion
-                key={READING_QUESTIONS[readingIdx].id}
-                question={READING_QUESTIONS[readingIdx]}
+                key={readingQs[readingIdx].id}
+                question={readingQs[readingIdx]}
                 questionNumber={readingIdx + 1}
-                total={READING_QUESTIONS.length}
+                total={readingQs.length}
                 onAnswer={handleReadingAnswer}
                 lang={lang}
               />
@@ -303,7 +329,7 @@ export default function PracticePage() {
             seconds={listeningSeconds}
             totalSeconds={LISTENING_TIME}
             current={listeningIdx + 1}
-            total={LISTENING_QUESTIONS.length}
+            total={listeningQs.length}
             label={lang === 'zh' ? '听力题' : 'Listening'}
           />
           <div className="max-w-3xl mx-auto px-4 py-8">
@@ -321,10 +347,10 @@ export default function PracticePage() {
               </div>
             ) : (
               <ListeningQuestion
-                key={LISTENING_QUESTIONS[listeningIdx].id}
-                question={LISTENING_QUESTIONS[listeningIdx]}
+                key={listeningQs[listeningIdx].id}
+                question={listeningQs[listeningIdx]}
                 questionNumber={listeningIdx + 1}
-                total={LISTENING_QUESTIONS.length}
+                total={listeningQs.length}
                 onAnswer={handleListeningAnswer}
                 lang={lang}
               />
