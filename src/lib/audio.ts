@@ -1,147 +1,133 @@
 'use client';
 
-// === WAV 生成器（纯内存，无需外部文件） ===
+// === 预生成的 WAV data URI（极小，~3KB） ===
 
-function generateWavDataUri(frequencies: number[], noteDuration: number, sampleRate = 8000, volume = 0.35): string {
-  const totalDuration = noteDuration * frequencies.length + 0.06;
-  const totalSamples = Math.floor(sampleRate * totalDuration);
-  const numChannels = 1, bitsPerSample = 16;
-  const blockAlign = numChannels * bitsPerSample / 8;
-  const dataSize = totalSamples * blockAlign;
-  
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-  
-  // RIFF
-  writeStr(view, 0, 'RIFF');
-  view.setUint32(4, 36 + dataSize, true);
-  writeStr(view, 8, 'WAVE');
-  writeStr(view, 12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * blockAlign, true);
-  view.setUint16(32, blockAlign, true);
-  view.setUint16(34, bitsPerSample, true);
-  writeStr(view, 36, 'data');
-  view.setUint32(40, dataSize, true);
-  
-  for (let i = 0; i < totalSamples; i++) {
-    const t = i / sampleRate;
-    const noteIdx = Math.min(Math.floor(t / noteDuration), frequencies.length - 1);
-    const noteT = t - noteIdx * noteDuration;
-    const freq = frequencies[noteIdx];
-    
-    // Envelope
-    let env = 1;
-    if (noteT < 0.005) env = noteT / 0.005;
-    else if (noteT > noteDuration - 0.03) env = (noteDuration - noteT) / 0.03;
-    if (noteT >= noteDuration) env = 0;
-    
-    const sample = Math.sin(2 * Math.PI * freq * t) * env * volume;
-    view.setInt16(44 + i * 2, Math.round(Math.max(-1, Math.min(1, sample)) * 32767), true);
+function makeWav(freqs: number[], durations: number[], sampleRate = 8000): string {
+  const totalDur = durations.reduce((a, b) => a + b, 0);
+  const totalSamples = Math.floor(sampleRate * totalDur);
+  const dataSize = totalSamples * 2;
+
+  const buf = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(buf);
+  writeWavHeader(v, sampleRate, dataSize);
+
+  let pos = 0;
+  for (let n = 0; n < freqs.length; n++) {
+    const dur = durations[n];
+    const freq = freqs[n];
+    const ns = Math.floor(sampleRate * dur);
+    for (let i = 0; i < ns; i++, pos++) {
+      const t = i / sampleRate;
+      const env = i < ns * 0.05 ? t / (dur * 0.05) : i > ns * 0.85 ? (ns - i) / (ns * 0.15) : 1;
+      const s = Math.sin(2 * Math.PI * freq * t) * env * 0.35;
+      v.setInt16(44 + pos * 2, Math.round(Math.max(-1, Math.min(1, s)) * 32767), true);
+    }
   }
-  
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return 'data:audio/wav;base64,' + btoa(binary);
+
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return 'data:audio/wav;base64,' + btoa(bin);
 }
 
-function writeStr(view: DataView, offset: number, str: string) {
-  for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+function writeWavHeader(v: DataView, sr: number, dataSize: number) {
+  const label = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  label(0, 'RIFF'); v.setUint32(4, 36 + dataSize, true); label(8, 'WAVE');
+  label(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true);
+  v.setUint16(22, 1, true); v.setUint32(24, sr, true);
+  v.setUint32(28, sr * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  label(36, 'data'); v.setUint32(40, dataSize, true);
 }
 
-// === 预生成 WAV data URI ===
-let _correctDataUri = '';
-let _wrongDataUri = '';
+const CORRECT_WAV = makeWav([523, 659, 784], [0.12, 0.12, 0.15]);
+const WRONG_WAV   = makeWav([380, 260, 170], [0.09, 0.10, 0.10]);
 
-function getCorrectUri(): string {
-  if (!_correctDataUri) _correctDataUri = generateWavDataUri([523, 659, 784], 0.14);
-  return _correctDataUri;
+// === DOM Audio 元素池（微信需要元素在 DOM 中） ===
+
+let _correctAudio: HTMLAudioElement | null = null;
+let _wrongAudio: HTMLAudioElement | null = null;
+
+function getCorrectEl(): HTMLAudioElement {
+  if (_correctAudio) return _correctAudio;
+  _correctAudio = document.createElement('audio');
+  _correctAudio.src = CORRECT_WAV;
+  _correctAudio.volume = 0.5;
+  _correctAudio.preload = 'auto';
+  _correctAudio.style.display = 'none';
+  document.body.appendChild(_correctAudio);
+  return _correctAudio;
 }
 
-function getWrongUri(): string {
-  if (!_wrongDataUri) _wrongDataUri = generateWavDataUri([400, 300, 200], 0.11, 8000, 0.25);
-  return _wrongDataUri;
+function getWrongEl(): HTMLAudioElement {
+  if (_wrongAudio) return _wrongAudio;
+  _wrongAudio = document.createElement('audio');
+  _wrongAudio.src = WRONG_WAV;
+  _wrongAudio.volume = 0.5;
+  _wrongAudio.preload = 'auto';
+  _wrongAudio.style.display = 'none';
+  document.body.appendChild(_wrongAudio);
+  return _wrongAudio;
 }
 
-// === HTML5 Audio 播放（微信/所有浏览器通用） ===
-
-function playAudioUri(dataUri: string) {
-  const audio = new Audio(dataUri);
-  audio.volume = 0.6;
-  audio.play().catch(() => {
-    // WeChat 偶尔也拦，静默失败
-  });
+function playSoundEl(el: HTMLAudioElement) {
+  el.currentTime = 0;
+  // 加载（确保 data URI 已就绪）
+  el.load();
+  el.play().catch(() => {});
 }
 
-// === Speech Synthesis（非微信环境增强） ===
+// === Speech Synthesis（非微信环境） ===
 
-let _voicesLoaded = false;
-function ensureVoices(): Promise<SpeechSynthesisVoice[]> {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return Promise.resolve([]);
-  const voices = window.speechSynthesis.getVoices();
-  if (voices.length > 0) { _voicesLoaded = true; return Promise.resolve(voices); }
-  return new Promise(resolve => {
-    const handler = () => {
-      _voicesLoaded = true;
-      resolve(window.speechSynthesis.getVoices());
-      window.speechSynthesis.removeEventListener('voiceschanged', handler);
-    };
-    window.speechSynthesis.addEventListener('voiceschanged', handler);
-    setTimeout(() => { if (!_voicesLoaded) handler(); }, 2000);
-  });
-}
-
-// === 7-9 年级趣味短语 ===
-
-const CORRECT_ZH = ['太强了！', '拿捏！', '你是学霸！', '稳如老狗！', '满分选手！', '无敌是多么寂寞！', '这题秒了！', '轻松碾压！', '老师看了都点赞！', '这就是实力！', '666！', '不愧是你！'];
-const CORRECT_EN = ['Nailed it!', 'You are a legend!', 'Too easy!', 'Boss level clear!', 'Unstoppable!', 'GG!', 'Crushed it!', 'No sweat!'];
+const CORRECT_ZH = ['太强了！', '拿捏！', '你是学霸！', '稳如老狗！', '满分选手！', '这题秒了！', '轻松碾压！', '老师看了都点赞！', '666！', '不愧是你！'];
+const CORRECT_EN = ['Nailed it!', 'You are a legend!', 'Too easy!', 'Boss level clear!', 'Unstoppable!', 'GG!', 'Crushed it!'];
 const WRONG_ZH = ['加油，下次必对！', '差一丢丢！', '稳住，你能行！', '别慌，小场面！', '这题在演你！', '啊这……再来！', '问题不大！', '还没使出全力吧？', '先mark，回头报仇！', '不慌，血条还长！'];
-const WRONG_EN = ['Almost got it!', 'So close!', 'You got this!', 'Shake it off!', 'Not today!', 'Nice try, one more!', 'Level up next time!'];
+const WRONG_EN = ['Almost got it!', 'So close!', 'You got this!', 'Shake it off!', 'Not today!', 'Nice try, one more!'];
 
-function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
+function pick<T>(arr: T[]): T { return arr[Math.floor(Math.random() * arr.length)]; }
 
 // === 主入口 ===
 
-export async function speakFeedback(correct: boolean, lang: 'zh' | 'en') {
-  // 1. HTML5 Audio 音效（微信 / iOS / Android / PC 全支持）
-  playAudioUri(correct ? getCorrectUri() : getWrongUri());
+export function speakFeedback(correct: boolean, lang: 'zh' | 'en') {
+  // 0. 确保预热（首次调用时创建 DOM 元素）
+  if (!_warmedUp) warmupAudio();
 
-  // 2. 语音朗读（非微信环境的锦上添花）
+  // 1. DOM Audio 音效（微信核心方案）
+  if (typeof document !== 'undefined' && document.body) {
+    playSoundEl(correct ? getCorrectEl() : getWrongEl());
+  }
+
+  // 2. 语音朗读（增强体验，可静默失败）
   if (typeof window !== 'undefined' && window.speechSynthesis) {
-    window.speechSynthesis.cancel();
-    const text = correct
-      ? (lang === 'zh' ? pick(CORRECT_ZH) : pick(CORRECT_EN))
-      : (lang === 'zh' ? pick(WRONG_ZH) : pick(WRONG_EN));
-    const utter = new SpeechSynthesisUtterance(text);
-    utter.rate = correct ? 1.05 : 0.95;
-    utter.volume = 0.7;
-    utter.lang = lang === 'zh' ? 'zh-CN' : 'en-US';
-    utter.pitch = correct ? 1.2 : 1.0;
-    const voices = await ensureVoices();
-    if (voices.length > 0) {
-      const match = voices.find(v => v.lang.startsWith(lang === 'zh' ? 'zh' : 'en')) || voices[0];
-      utter.voice = match;
-    }
-    window.speechSynthesis.speak(utter);
+    try {
+      window.speechSynthesis.cancel();
+      const text = correct
+        ? (lang === 'zh' ? pick(CORRECT_ZH) : pick(CORRECT_EN))
+        : (lang === 'zh' ? pick(WRONG_ZH) : pick(WRONG_EN));
+      const u = new SpeechSynthesisUtterance(text);
+      u.rate = correct ? 1.05 : 0.95;
+      u.volume = 0.7;
+      u.lang = lang === 'zh' ? 'zh-CN' : 'en-US';
+      u.pitch = correct ? 1.2 : 1.0;
+      window.speechSynthesis.speak(u);
+    } catch { /* optional */ }
   }
 }
 
-// === 预热 ===
-let _audioWarmedUp = false;
+// === 预热：首次用户交互时创建 DOM 元素，解锁音频 ===
+
+let _warmedUp = false;
 export function warmupAudio() {
-  if (_audioWarmedUp || typeof window === 'undefined') return;
-  _audioWarmedUp = true;
-  // 预生成 WAV data URIs
-  getCorrectUri();
-  getWrongUri();
-  if (window.speechSynthesis) {
-    window.speechSynthesis.getVoices();
-    ensureVoices();
-  }
+  if (_warmedUp || typeof document === 'undefined') return;
+  _warmedUp = true;
+  // 预创建 audio 元素，挂到 DOM（微信要求元素在 DOM 中才能 play）
+  getCorrectEl();
+  getWrongEl();
+  // 触发一次静音 play 来"解锁"音频上下文
+  const el = getCorrectEl();
+  el.volume = 0;
+  el.play().then(() => {
+    el.pause();
+    el.currentTime = 0;
+    el.volume = 0.5;
+  }).catch(() => {});
 }
